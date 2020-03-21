@@ -1,10 +1,11 @@
 import os
 import pandas as pd
 import altair as alt
+from vega_datasets import data
 import plotly.graph_objects as go
 import streamlit as st
 
-NOT_DATE_COLS = ['Province/State', 'Country/Region', 'Lat', 'Long']
+NOT_DATE_COLS = ['Province/State', 'Country/Region', 'latitude', 'longitude']
 
 @st.cache
 def read_hopkins_time_series():
@@ -20,9 +21,12 @@ def read_hopkins_time_series():
 
     cases = dict()
 
-    cases['Confirmados']    = pd.read_csv('{}/time_series_19-covid-Confirmed.csv'.format(DIR))
+    cases['Confirmados']    = pd.read_csv('{}/time_series_19-covid-Confirmed.csv'.format(DIR))    
     cases['Muertos']        = pd.read_csv('{}/time_series_19-covid-Deaths.csv'.format(DIR))
     cases['Recuperados']    = pd.read_csv('{}/time_series_19-covid-Recovered.csv'.format(DIR))
+
+    for i in cases.keys():
+        cases[i] = cases[i].rename(columns={'Lat':'latitude', 'Long':'longitude'})
 
     return (cases)
 
@@ -111,30 +115,40 @@ def plot_comparative_time_series(principal_ts, compared, cases):
 
     return None
 
+def plot_world_map(cases):
+
+    world = data.world_110m.url
+    world_topo = data.world_110m()
+
+    st.altair_chart(
+        alt.Chart(alt.topo_feature(world, 'countries')).mark_geoshape().properties(width=800, height=400).project(type='naturalEarth1')
+    )
+
+    return None
 
 
 
 def main():
-    cases = read_hopkins_time_series()
-
-    st.title('Panel COVID-19 para Chile')
-
+    ### sidebar
     st.sidebar.title('Navegación')
-
-    
-
     section = st.sidebar.radio(
         'Escoja análisis', 
         ['Mundo', 'Chile', 'Otros países']
-            
     )
 
+    ### main body
+    cases = read_hopkins_time_series()
+    st.title('Panel COVID-19 para Chile')
+
+    ### sections
     if section == 'Mundo':
         st.header('Series de tiempo en el mundo')
         world_ts = plot_time_series(cases)
 
         st.header('Mapa de infección en el mundo')
-        
+        st.map(cases['Confirmados'])
+        #st.write(cases['Confirmados'])
+        # plot_world_map(cases)        
         
 
     elif section == 'Chile':
