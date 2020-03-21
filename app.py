@@ -8,6 +8,14 @@ NOT_DATE_COLS = ['Province/State', 'Country/Region', 'Lat', 'Long']
 
 @st.cache
 def read_hopkins_time_series():
+    '''
+    Reads time series from the John Hopkins University github.
+    These are curated from individual daily reports to the WHO, and are considered fairly complete and robust.
+    Small deviations from particular countries are expected.
+
+    Returns a dictionary with dataframes for Confirmed, Dead, and Recovered cases.
+    '''
+
     DIR = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series"    
 
     cases = dict()
@@ -19,6 +27,11 @@ def read_hopkins_time_series():
     return (cases)
 
 def agreggate_time_series(cases, country=None):
+    '''
+    Takes in a dictionary with Confirmed, Dead, and Recovered cases from read_hopkins_time_series(), and the selection of a country.
+    Returns a time series for the three categories for the specified country.
+    If coutry==None (default) it returns global data.
+    '''
 
     if country==None:
         df = pd.concat(
@@ -38,86 +51,117 @@ def agreggate_time_series(cases, country=None):
 
     return df
 
-def plot_time_series(cases):
+def plot_time_series(cases, country=None, plot=True):
+    '''
+    Generate a time series plot for Confirmed, Dead, and Recovered cases for the world or a specific country.
+    It optionally shows the data.
+    '''
 
-    world = pd.concat(
-        [cases[key][[x for x in cases[key].columns if x not in NOT_DATE_COLS]].sum().T for key in cases.keys()], 
-        axis=1
-    )
-
-    world.columns = cases.keys() #['Confirmados', 'Muertos', 'Recuperados']
-    world.index = pd.to_datetime(world.index, infer_datetime_format=True)
-    world = world.rename_axis('Fecha').reset_index()
-
-
-    world = agreggate_time_series(cases, country='Chile')
-
-    world_long = world.melt(
-        id_vars = ['Fecha'], 
-        value_vars = ['Confirmados', 'Muertos', 'Recuperados'], 
-        var_name = 'Tipo',
-        value_name = 'Casos'
-    )
-
-    chart = alt.Chart(world_long).mark_line().encode(
-        x = 'Fecha',
-        y = 'Casos',
-        color = 'Tipo'
-    )
-
-    #st.altair_chart(chart)
+    ts = agreggate_time_series(cases, country=country)
 
     fig = go.Figure()
     for key in cases.keys():
-        fig.add_trace(go.Scatter(x=world.Fecha, y=world[key], name=key))
+        fig.add_trace(go.Scatter(x=ts.Fecha, y=ts[key], name=key))
+    
+    if plot:
+        st.plotly_chart(fig)
+        if st.checkbox('Mostrar datos'):
+            st.write(ts)
+    
+    return {country: ts}
+
+def plot_comparative_time_series(principal_ts, compared, cases):
+
+    main_country = list(principal_ts.keys())[0]
+    ts = principal_ts[main_country]
+    tsshort = ts[ts.Confirmados >0]
+    tsshort['Días desde contagio']  = tsshort.index - tsshort.index[0]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=tsshort['Días desde contagio'], 
+        y=tsshort.Confirmados, 
+        name=main_country,
+        mode='lines+markers',
+        line=dict(color='black', width=2),
+        ))
+
+    for country in compared:
+        tsi = plot_time_series(cases, country=country, plot=False)
+        tsi = tsi[country]
+        tsishort = tsi[tsi.Confirmados > 0]
+        tsishort['Días desde contagio'] = tsishort.index - tsishort.index[0]
+
+        fig.add_trace(go.Scatter(
+            x=tsishort['Días desde contagio'], 
+            y=tsishort.Confirmados, 
+            name=country,
+            mode='lines'
+        ))
     
     fig.update_layout(
-        title_text='Casos en todo el mundo',  
-    #    xaxis_rangeslider_visible=True
+        xaxis_title='Días desde contagio',
+        yaxis_title='Casos confirmados'
     )
     st.plotly_chart(fig)
-    if st.checkbox('Mostrar datos'):
-        st.subheader('Datos mundiales')
-        st.write(world)
-    #st.line_chart(world)
-
-
-
+    #st.write(tsshort)
+    #principal_ts[0] 
+    
 
 
     return None
 
+
+
+
 def main():
     cases = read_hopkins_time_series()
 
-    st.title('COVID-19 Dashboard para Chile')
+    st.title('Panel COVID-19 para Chile')
 
-    section = st.sidebar.selectbox(
+    st.sidebar.title('Navegación')
+
+    
+
+    section = st.sidebar.radio(
         'Escoja análisis', 
-        ['Series de tiempo', 'Mapas', 'Proyecciones']
+        ['Mundo', 'Chile', 'Otros países']
             
     )
 
-    if section == 'Series de tiempo':
-        #st.write(confirmed[confirmed['Country/Region'] == 'Chile'].T)        
-        #st.line_chart(confirmed[confirmed['Country/Region'] == 'Chile'].T)
+    if section == 'Mundo':
+        st.header('Series de tiempo en el mundo')
+        world_ts = plot_time_series(cases)
 
-        plot_time_series(cases)
+        st.header('Mapa de infección en el mundo')
+        
+        
 
-    elif section == 'Mapas':
-        st.markdown('En construcción')
+    elif section == 'Chile':
+        st.header('Series de tiempo en Chile')
+        chile_ts = plot_time_series(cases, country='Chile')
 
-    elif section == 'Proyecciones':
-        st.markdown('En construcción')
+        st.header('Mapa de infección en Chile')
 
-    st.info(
+        st.header('Comparación entre Chile y otros países')
+        compared = st.multiselect('Seleccione países para comparar', sorted(cases['Confirmados']['Country/Region'].unique()))
+
+        plot_comparative_time_series(chile_ts, compared, cases)
+        
+
+    elif section == 'Otros países':
+        st.header('Series de tiempo en otros países')
+        country = st.selectbox('Seleccione un país', sorted(cases['Confirmados']['Country/Region'].unique()))
+        plot_time_series(cases, country=country, plot=True)
+
+    
+    st.sidebar.info(
         """
-        Desarrollado por [Benjamín Carrión](https://www.linkedin.com/in/bencarrion/) 
-        | Fuente de datos: [John Hopkins University](https://github.com/CSSEGISandData/COVID-19) \n
+        Desarrollado por [Benjamín Carrión](https://www.linkedin.com/in/bencarrion/)\n
+        Fuente de datos: [John Hopkins University](https://github.com/CSSEGISandData/COVID-19) \n
         Código fuente: [github.com/bicarrio](https://github.com/bicarrio/COVID-19_Chile)
         """
     )
-    
 
 
 if __name__ == "__main__":
