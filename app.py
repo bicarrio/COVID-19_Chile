@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from vega_datasets import data
 import plotly.graph_objects as go
+import plotly.express as px
 import streamlit as st
 
 NOT_DATE_COLS = ['Province/State', 'Country/Region', 'latitude', 'longitude']
@@ -29,6 +30,22 @@ def read_hopkins_time_series():
         cases[i] = cases[i].rename(columns={'Lat':'latitude', 'Long':'longitude'})
 
     return (cases)
+
+def transform_cases(cases):
+    '''
+    Adds per country, and transform columns to datetime
+    '''
+
+    cases_times = dict()
+    for i in cases.keys():
+        df = cases[i].groupby('Country/Region').sum()
+        df.index.name = 'País'
+        df.drop(['latitude', 'longitude'], axis=1, inplace=True)
+        # df.columns = pd.to_datetime(df.columns, infer_datetime_format=True)
+        # df.reset_index(inplace=True)
+        cases_times[i] = df
+
+    return cases_times
 
 def agreggate_time_series(cases, country=None):
     '''
@@ -71,8 +88,10 @@ def plot_time_series(cases, country=None, plot=True):
         st.plotly_chart(fig)
         if st.checkbox('Mostrar datos'):
             st.write(ts)
-    
-    return {country: ts}
+    if country==None:
+        return {'World': ts}
+    else:
+        return {country: ts}
 
 def plot_comparative_time_series(principal_ts, compared, cases):
 
@@ -117,15 +136,50 @@ def plot_comparative_time_series(principal_ts, compared, cases):
 
 def plot_world_map(cases):
 
-    world = data.world_110m.url
-    world_topo = data.world_110m()
+    cases_times = transform_cases(cases)   
+    variable = st.selectbox('', list(cases_times.keys()))
+    
+    time0 = cases_times['Confirmados'].columns[0]
+    days = cases_times['Confirmados'].columns
+    time = st.slider(
+        'Días desde el comienzo de la pandemia ({})'.format(pd.to_datetime(time0, infer_datetime_format=True)), 
+        min_value = 0,
+        max_value = len(days)-1, 
+        step=1
+    )
+    current_time = days[time]
 
-    st.altair_chart(
-        alt.Chart(alt.topo_feature(world, 'countries')).mark_geoshape().properties(width=800, height=400).project(type='naturalEarth1')
+    if variable == 'Confirmados':
+        scale = px.colors.sequential.Viridis
+    if variable == 'Muertos':
+        scale = px.colors.sequential.Inferno_r
+    if variable == 'Recuperados':
+        scale = px.colors.sequential.algae
+
+
+    fig0 = px.choropleth(
+        cases_times[variable][current_time].reset_index(), 
+        locations = 'País',
+        locationmode = 'country names',
+        color = days[time], 
+        hover_name='País',
+        #hover_data=[current_time],
+        color_continuous_scale=scale,
+        range_color=[0, cases_times[variable][days[-1]].max()],
     )
 
-    return None
+    fig0.update_layout(
+        title_text = '{} hasta {}'.format(variable, pd.to_datetime(current_time, infer_datetime_format=True).strftime('%Y-%m-%d')), 
+        geo = dict(
+            showframe=False,
+            showcoastlines=False, 
+            projection_type='equirectangular',
+        )
+    )
 
+    st.plotly_chart(fig0)   
+
+    return None
 
 
 def main():
@@ -134,6 +188,13 @@ def main():
     section = st.sidebar.radio(
         'Escoja análisis', 
         ['Mundo', 'Chile', 'Otros países']
+    )
+    st.sidebar.info(
+        """
+        Desarrollado por [Benjamín Carrión](https://www.linkedin.com/in/bencarrion/)\n
+        Fuente de datos: [John Hopkins University](https://github.com/CSSEGISandData/COVID-19) \n
+        Código fuente: [github.com/bicarrio](https://github.com/bicarrio/COVID-19_Chile)
+        """
     )
 
     ### main body
@@ -146,36 +207,26 @@ def main():
         world_ts = plot_time_series(cases)
 
         st.header('Mapa de infección en el mundo')
-        st.map(cases['Confirmados'])
-        #st.write(cases['Confirmados'])
-        # plot_world_map(cases)        
+        plot_world_map(cases)   
         
 
     elif section == 'Chile':
         st.header('Series de tiempo en Chile')
         chile_ts = plot_time_series(cases, country='Chile')
 
-        st.header('Mapa de infección en Chile')
 
         st.header('Comparación entre Chile y otros países')
         compared = st.multiselect('Seleccione países para comparar', sorted(cases['Confirmados']['Country/Region'].unique()))
 
         plot_comparative_time_series(chile_ts, compared, cases)
         
+        st.header('Mapa de infección en Chile')
+        'EN CONSTRUCCIÓN'
 
     elif section == 'Otros países':
         st.header('Series de tiempo en otros países')
         country = st.selectbox('Seleccione un país', sorted(cases['Confirmados']['Country/Region'].unique()))
         plot_time_series(cases, country=country, plot=True)
-
-    
-    st.sidebar.info(
-        """
-        Desarrollado por [Benjamín Carrión](https://www.linkedin.com/in/bencarrion/)\n
-        Fuente de datos: [John Hopkins University](https://github.com/CSSEGISandData/COVID-19) \n
-        Código fuente: [github.com/bicarrio](https://github.com/bicarrio/COVID-19_Chile)
-        """
-    )
 
 
 if __name__ == "__main__":
