@@ -22,9 +22,9 @@ def read_hopkins_time_series():
 
     cases = dict()
 
-    cases['Confirmados']    = pd.read_csv('{}/time_series_19-covid-Confirmed.csv'.format(DIR))    
-    cases['Muertos']        = pd.read_csv('{}/time_series_19-covid-Deaths.csv'.format(DIR))
-    cases['Recuperados']    = pd.read_csv('{}/time_series_19-covid-Recovered.csv'.format(DIR))
+    cases['Confirmados']    = pd.read_csv('{}/time_series_covid19_confirmed_global.csv'.format(DIR))   
+    cases['Muertos']        = pd.read_csv('{}/time_series_covid19_deaths_global.csv'.format(DIR))
+    cases['Recuperados']    = pd.read_csv('{}/time_series_covid19_recovered_global.csv'.format(DIR))
 
     for i in cases.keys():
         cases[i] = cases[i].rename(columns={'Lat':'latitude', 'Long':'longitude'})
