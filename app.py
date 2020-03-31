@@ -1,6 +1,8 @@
 # import os
+import json
 import pandas as pd
-# import altair as alt
+import geopandas
+import altair as alt
 # from vega_datasets import data
 import plotly.graph_objects as go
 import plotly.express as px
@@ -18,7 +20,7 @@ def read_hopkins_time_series():
     Returns a dictionary with dataframes for Confirmed, Dead, and Recovered cases.
     '''
 
-    DIR = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series"    
+    DIR = 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series' 
 
     cases = dict()
 
@@ -30,6 +32,34 @@ def read_hopkins_time_series():
         cases[i] = cases[i].rename(columns={'Lat':'latitude', 'Long':'longitude'})
 
     return (cases)
+
+@st.cache
+def read_minsal_table():
+    '''
+    reads a table with latest data on confirmed cases, by region
+    '''
+
+    URL = 'https://www.minsal.cl/nuevo-coronavirus-2019-ncov/casos-confirmados-en-chile-covid-19/'
+
+    minsal = pd.read_html(URL)[0].iloc[2:]
+    minsal.columns = minsal.iloc[0]
+    minsal = minsal.iloc[1:-1]
+    minsal['codregion'] = [15, 1, 2, 3, 4, 5, 13, 6, 7, 16, 8, 9, 14, 10, 11, 12]
+
+    ### reads shapefile with chilean regions
+    # URL = 'https://www.bcn.cl/obtienearchivo?id=repositorio/10221/10398/2/Regiones.zip'
+    # regions = geopandas.read_file(URL)
+    
+    shape = 'data/Regional'
+    regions = geopandas.read_file(shape)
+
+    regions = regions.merge(minsal, on='codregion')
+
+    choro_json = json.loads(regions.to_json())
+    choro_data = alt.Data(values=choro_json['features'])
+
+    return choro_data
+
 
 def transform_cases(cases):
     '''
@@ -200,6 +230,20 @@ def main():
     ### main body
     cases = read_hopkins_time_series()
     st.title('Panel COVID-19 para Chile')
+
+    # choro_data = read_minsal_table()
+
+    # chart = alt.Chart(choro_data).mark_geoshape().encode(
+    #     color = 'Casos totales:Q',
+    #     #tooltip = ['Casos totales', 'Fallecidos']
+    # )
+
+    # st.altair_chart(chart)
+
+
+    #world = geopandas.read_file(geopandas.datasets.get_path('naturalearth_lowres'))
+  
+
 
     ### sections
     if section == 'Mundo':
